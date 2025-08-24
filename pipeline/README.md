@@ -1,197 +1,225 @@
+# SpeechPII Pipeline – CLI
+
 ## Overview
+This pipeline orchestrates:
+1. **ASR transcription** (greedy or N-best)  
+2. **LLM-based correction**  
+3. **LLM-based PII tagging**  
+4. **(Deprecated) Vosk word timestamps**  
+5. **Alignment & PII extraction**  
+6. **Evaluation** (index-based)
 
-This pipeline orchestrates ASR transcription, LLM-based correction & tagging, alignment, PII extraction, and evaluation in a modular, configurable way. You can run end-to-end or pick & choose steps.
+You can run end-to-end or pick specific steps. Each command reads/writes CSV/JSON so you can branch or resume anywhere.
 
 ---
 
-## Dependencies
+## Installation
 
 ```bash
-pip install transformers datasets pandas openai typer sklearn
+pip install typer pandas scikit-learn vosk
 ```
 
----
-
-## Usage
+If you use Hugging Face Whisper or OpenAI LLMs, install their dependencies and set:
 
 ```bash
-$ python cli.py --help
-Usage: cli.py [OPTIONS] COMMAND [ARGS]...
+export OPENAI_API_KEY=your_api_key
+```
+⸻
+
+Project Layout
+
+```bash
+.
+├─ cli.py
+├─ pipeline.py
+├─ utils.py
+├─ models/
+│  └─ vosk-model-en-us-0.42-gigaspeech/
+└─ data/
+   ├─ transcriptions.csv
+   ├─ transcriptions_corrected.csv
+   ├─ transcriptions_tagged.csv
+   └─ ...
+```
+
+⸻
+
+CLI Usage
+
+```bash
+0. Help command
+
+python cli.py --help
+```
+⸻
+
+```bash
+1. Transcribe
+
+python cli.py transcribe --help
 
 Options:
-  --help  Show this message and exit.
+	•	--model-name TEXT Whisper model (default: f-azm17/whisper-small_en_seed_gretel_similar0.3-default-tokenizer)
+	•	--llm-model TEXT LLM model (default: gpt-4o)
+	•	--audio-dirs TEXT... Audio directories
+	•	--n-best INT Number of hypotheses (default: 1)
+	•	--out-csv TEXT Output CSV (default: data/transcriptions.csv)
 
-Commands:
-  transcribe    Step 1: ASR transcription (greedy or n-best)
-  correct       Step 2: LLM-based transcript correction
-  tag           Step 3: LLM-based PII tagging
-  extract       Step 4: Align & extract PII tuples
-  evaluate      Step 5: Evaluation (precision/recall/F1/confusion)
-
-───────────────────────────────────────────────────────────────────────────────
-```
-
-### To transcribe
-
-```bash
-$ python cli.py transcribe --help
-Usage: cli.py transcribe [OPTIONS]
-
-  Step 1: ASR transcription (greedy or n-best).
-
-Options:
-  --model-name TEXT       Whisper model name (default: f-azm17/whisper-small_en_seed_gretel_similar0.3-default-tokenizer)
-  --llm-model TEXT        LLM model (default: openai/gpt-4o)
-  --audio-dirs TEXT...    List of audio directories
-                          (default: ["data/Audio_Files_for_testing","data/newtest_151_500_updated_TTS"])
-  --n-best INT            Number of beams / return sequences (default: 1)
-  --out-csv TEXT          Output CSV path (default: data/transcriptions.csv)
-  --help                  Show this message and exit.
-
-```
 Example:
 
-```
 python cli.py transcribe \
   --model-name f-azm17/whisper-small_en_... \
   --n-best 5 \
-  --out-csv data/500_test_transcriptions_5-best.csv
+  --out-csv data/transcriptions_5best.csv
 ```
-
-
-───────────────────────────────────────────────────────────────────────────────
-
-### To perform correction with N-best
+⸻
 
 ```bash
-$ python cli.py correct --help
-Usage: cli.py correct [OPTIONS]
+2. Correct
 
-  Step 2: LLM-based transcript correction.
+python cli.py correct --help
 
 Options:
-  --in-csv TEXT     Input CSV of transcriptions
-                    (default: data/transcriptions.csv)
-  --out-csv TEXT    Output CSV for corrected transcripts
-                    (default: data/transcriptions_corrected.csv)
-  --help            Show this message and exit.
-```
+	•	--in-csv TEXT Input CSV (default: data/transcriptions.csv)
+	•	--out-csv TEXT Output CSV (default: data/transcriptions_corrected.csv)
 
 Example:
 
-```
 python cli.py correct \
-  --in-csv data/500_test_transcriptions_greedy.csv \
-  --out-csv data/500_test_transcriptions_corrected.csv
+  --in-csv data/transcriptions.csv \
+  --out-csv data/transcriptions_corrected.csv
 ```
 
-───────────────────────────────────────────────────────────────────────────────
-
-### To perform tagging
+⸻
 
 ```bash
-$ python cli.py tag --help
-Usage: cli.py tag [OPTIONS]
+3. Tag
 
-  Step 3: LLM-based PII tagging.
+python cli.py tag --help
 
 Options:
-  --in-csv TEXT     Input CSV of corrected transcripts
-                    (default: data/transcriptions_corrected.csv)
-  --text-col TEXT   Column name for corrected text
-                    (default: transcript)
-  --method TEXT     Tagging method: zero_shot, few_shot,
-                    zero_shot_cot, few_shot_cot
-                    (default: zero_shot)
-  --out-csv TEXT    Output CSV for tagged transcripts
-                    (default: data/transcriptions_tagged.csv)
-  --help            Show this message and exit.
-```
+	•	--in-csv TEXT Input CSV (default: data/transcriptions_corrected.csv)
+	•	--text-col TEXT Column with text (default: transcript)
+	•	--method TEXT Tagging method (default: zero_shot_icl)
+	•	--out-csv TEXT Output CSV (default: data/transcriptions_tagged.csv)
 
 Example:
 
-```
 python cli.py tag \
-  --in-csv data/500_test_transcriptions_corrected.csv \
+  --in-csv data/transcriptions_corrected.csv \
   --method few_shot_cot \
-  --out-csv data/500_test_transcriptions_tagged_few_shot_cot.csv
+  --out-csv data/transcriptions_tagged_few_shot_cot.csv
 ```
 
-───────────────────────────────────────────────────────────────────────────────
-
-### To retrieve Vosk word‐level timestamps
+⸻
 
 ```bash
-$ python cli.py vosk --help
-Usage: cli.py vosk [OPTIONS]
+4. Vosk Timestamps [Deprecated]
 
-  New Step: Run Vosk on each audio_path in in_csv[audio_col] and save timestamps.
+python cli.py vosk --help
 
 Options:
-  --in-csv TEXT         Input CSV containing audio file paths (default: TODO)
-  --vosk-model-dir TEXT Path to Vosk model directory (default: models/vosk-model-en-us-0.42-gigaspeech)
-  --out-json TEXT        Output JSON for Vosk timestamps (default: ../../data/vosk_output/vosk_output.json)
-  --help                Show this message and exit.
-```
-```
+	•	--in-csv TEXT Input CSV with file column (default: data/transcriptions.csv)
+	•	--audio-col TEXT Column name for audio path (default: file)
+	•	--vosk-model-dir TEXT Path to Vosk model (default: models/vosk-model-en-us-0.42-gigaspeech)
+	•	--out-json TEXT Output JSON (default: ../../data/vosk_output/vosk_output.json)
+
+Example:
+
 python cli.py vosk \
   --in-csv data/transcriptions.csv \
-  --vosk-model-dir model/vosk-model-en-us \
-  --out-csv data/500_vosk_words.csv
+  --vosk-model-dir models/vosk-model-en-us-0.42-gigaspeech \
+  --out-json data/vosk_output.json
 ```
-───────────────────────────────────────────────────────────────────────────────
 
-### To extract PII triplets -> `start_time, end_time, tag`
+⸻
 
 ```bash
-$ python cli.py extract --help
-Usage: cli.py extract [OPTIONS]
+5. Extract Clean Text & PII Tuples
 
-  Step 4: Align & extract PII tuples.
+python cli.py extract --help
+
+Arguments:
+	•	input_csv (must contain file, tagged)
+	•	output_csv (written with file, clean_text, pii_tuples)
 
 Options:
-  --method TEXT       Method name (e.g., "zero_shot_icl_no_correct")
-  --in-csv TEXT       Input CSV of tagged transcripts
-  --out-csv TEXT      Output CSV for triplets
-  --vosk-json TEXT     Input JSON file with vosk_words column
-                      (default: ../../data/vosk_output/vosk_output.json)
-  --help              Show this message and exit.
-```
+	•	--allowed-labels/-l Labels to retain (default: EMAIL, NRIC, CREDIT_CARD, PHONE, PASSPORT_NUM, BANK_ACCOUNT, CAR_PLATE, PERSON)
 
 Example:
 
-```
 python cli.py extract \
-  --method 2_best_few_shot_cot
-  --in-csv ../../data/tagged_transcripts/500_test_transcriptions_tagged_2_best_few_shot_cot.csv \
-  --out-csv ../../data/triplets/triplets_2_best_few_shot_cot.csv \
+  data/transcriptions_tagged.csv \
+  data/transcriptions_extracted.csv \
+  -l EMAIL -l PHONE
 ```
 
-───────────────────────────────────────────────────────────────────────────────
-
-### To evaluate with F1 score
+⸻
 
 ```bash
-$ python cli.py evaluate --help
-Usage: cli.py evaluate [OPTIONS]
+6. Extract Using Timestamps [Deprecated]
 
-  Step 5: Evaluation (precision/recall/F1/confusion).
+python cli.py extract-using-timestamps --help
 
 Options:
-  --gt-csv TEXT       Ground-truth triplets CSV
-                      (default: data/ground_truth.csv)
-  --pred-csv TEXT     Predicted triplets CSV
-                      (default: data/triplets.csv)
-  --tolerance FLOAT   Time-offset tolerance in seconds
-                      (default: 0.5)
-  --help              Show this message and exit.
-```
+	•	--method TEXT Extraction method
+	•	--in-csv TEXT Input CSV
+	•	--out-csv TEXT Output CSV
+	•	--vosk-json TEXT JSON with word timestamps (default: ../../data/vosk_output/vosk_output.json)
 
 Example:
 
+python cli.py extract-using-timestamps \
+  --method align \
+  --in-csv data/transcriptions_tagged.csv \
+  --out-csv data/triplets.csv \
+  --vosk-json data/vosk_output.json
 ```
+
+⸻
+
+```bash
+7. Evaluate (Time-Offset Tolerance) [Deprecated]
+
+python cli.py evaluate --help
+
+Options:
+	•	--gt-csv TEXT Ground-truth CSV (default: ../../data/triplets/ref_triplets_500.csv)
+	•	--pred-csv TEXT Predictions CSV (default: ../../data/triplets/triplets_no_correct_zero_shot_icl.csv)
+	•	--tolerance FLOAT Time-offset tolerance (default: 5)
+
+Example:
+
 python cli.py evaluate \
-  --gt-csv data/500_gt_triplets.csv \
-  --pred-csv data/hypo_triplets_500_few_shot.csv \
-  --tolerance 0.05
+  --gt-csv data/ref_triplets.csv \
+  --pred-csv data/pred_triplets.csv \
+  --tolerance 2.0
 ```
+
+⸻
+
+```bash
+8. Evaluate by Index (Character-Level)
+
+python cli.py evaluate-index --help
+
+Arguments:
+	•	true_csv Ground-truth CSV (with pii_tuples)
+	•	pred_csv Predictions CSV (with pii_tuples)
+
+Options:
+	•	--allowed-labels/-l Labels to count (comma-separated or multiple flags)
+	•	--tolerance INT Character index tolerance (default: 5)
+
+Example:
+
+python cli.py evaluate-index \
+  data/ref_extracted.csv \
+  data/pred_extracted.csv \
+  -l EMAIL -l PHONE \
+  --tolerance 3
+```
+
+⸻
+
+
