@@ -6,4 +6,4 @@ Link to [related paper](https://www.colips.org/conferences/ialp2025/wp/wp-conten
 
 ## Running the pipeline
 
-TODO
+Click in `pipeline` directory to see CLI commands.
