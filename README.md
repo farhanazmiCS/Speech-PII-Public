@@ -1,3 +1,9 @@
-# SpeeDF - A Speech De-Identification Framework
+# LLM-Enhanced Spoken Named Entity Recognition leveraging ASR N-best Hypotheses
 
-You can find the pipeline for Speech PII de-identification system here.
+## Related Paper
+
+Link to [related paper](https://www.colips.org/conferences/ialp2025/wp/wp-content/IALP2025-Proceedings/papers/IALP2025_P056.pdf)
+
+## Running the pipeline
+
+TODO
